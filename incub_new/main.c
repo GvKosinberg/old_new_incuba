@@ -49,6 +49,9 @@ unsigned char DisplayTimeTimer; //Пауза для просмотра температуры уставки не зап
 //EEPROM
 unsigned int EEMEM TemperatureStore=370;
 
+uint8_t temp_ee [16] EEMEM;
+uint8_t temp_ram [16];
+
 
 //Program usage
 static TEMPREADER_PARAM TempReader;										
@@ -74,6 +77,45 @@ unsigned int PerevorotTimer_mSec=0;							//Auto overturn timer msecond's
 //!DISPLAY_DATA * pDisp - pointer to the structure of dysplay control <br> 	
 //!Function transmits data to the display
 void DysplayDataInput(DISPLAY_DATA* pDisp, float Data);
+
+void remember_me(int tempa)
+{
+	static uint8_t counter = 0;
+	static uint8_t tempa_10 = 0;
+	
+	tempa_10 = (uint8_t)((tempa/100)*10+tempa%100/10);
+	
+	if (counter<5) 
+	{
+		temp_ram[3*counter]=((tempa_10%100)/10)+0x30;
+		temp_ram[(3*counter)+1]=((tempa_10%100)%10)+0x30;
+		temp_ram[(3*counter)+2] = '/';
+		counter++;
+	}
+	else
+	{
+		for (int i=0; i<12; i++)
+		{
+			temp_ram[i]=temp_ram[i+3];
+		}
+		temp_ram[12]=((tempa_10%100)/10)+0x30;
+		temp_ram[13]=((tempa_10%100)%10)+0x30;
+		temp_ram[14] = '/';
+	}
+	
+}
+
+void update_ee()
+{
+	static uint8_t cnt = 0;
+	//uint8_t metka = 'x';
+	
+	eeprom_update_byte(&temp_ee[cnt], temp_ram[cnt]);
+	//eeprom_write_byte(&temp_ram[i+1], metka);
+	
+	if (cnt<15) cnt++;
+	else cnt=0;
+}
 
 //!function ButtonStateCheck<br> 
 //!BUTTON_DATA *pButtonCheck - pointer to the structure of button info <br>
@@ -130,6 +172,10 @@ ISR(TIMER0_OVF_vect)
 	else PinSetOut(&Semistor_Perevorot, 1);
 	PerevorotTimer_mSec++;
 	if (PerevorotTimer_mSec>=Second) {PerevorotTimer_Sec++;PerevorotTimer_mSec=0;}
+		
+	/////////eeeprom///////
+	update_ee();
+	//////////////////////
 
 
 	// 1-wire
@@ -162,10 +208,14 @@ ISR(TIMER0_OVF_vect)
 		if ((ButtonCheck.Timer>150)&&(ButtonCheck.DisplayTimeTimer==0))	//время исполнения кода 230 мкС   13.05.11
 		{
 			if ((TempReader.Tmpr<1000)&&(TempReader.Tmpr>-550)) 
-
+			{
 				sprintf ( (char*) &DisplayData.SymbolData[0], "%03d", TempReader.Tmpr);
-			else 
+				remember_me(TempReader.Tmpr);
+			}
+			else
+			{ 
 				sprintf ( (char*) &DisplayData.SymbolData[0], "06p" );
+			}
 		}
 	}
 }
